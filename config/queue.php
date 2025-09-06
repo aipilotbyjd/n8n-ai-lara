@@ -7,24 +7,22 @@ return [
     | Default Queue Connection Name
     |--------------------------------------------------------------------------
     |
-    | Laravel's queue supports a variety of backends via a single, unified
-    | API, giving you convenient access to each backend using identical
-    | syntax for each. The default queue connection is defined below.
+    | Laravel's queue API supports an assortment of back-ends via a single
+    | API, giving you convenient access to each back-end using the same
+    | syntax for every one. Here you may define a default connection.
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
     | Queue Connections
     |--------------------------------------------------------------------------
     |
-    | Here you may configure the connection options for every queue backend
-    | used by your application. An example configuration is provided for
-    | each backend supported by Laravel. You're also free to add more.
-    |
-    | Drivers: "sync", "database", "beanstalkd", "sqs", "redis", "null"
+    | Here you may configure the connection information for each server that
+    | is used by your application. A default configuration has been added
+    | for each back-end shipped with Laravel. You are free to add more.
     |
     */
 
@@ -36,18 +34,17 @@ return [
 
         'database' => [
             'driver' => 'database',
-            'connection' => env('DB_QUEUE_CONNECTION'),
-            'table' => env('DB_QUEUE_TABLE', 'jobs'),
-            'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            'table' => 'jobs',
+            'queue' => 'default',
+            'retry_after' => 90,
             'after_commit' => false,
         ],
 
         'beanstalkd' => [
             'driver' => 'beanstalkd',
-            'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
-            'queue' => env('BEANSTALKD_QUEUE', 'default'),
-            'retry_after' => (int) env('BEANSTALKD_QUEUE_RETRY_AFTER', 90),
+            'host' => 'localhost',
+            'queue' => 'default',
+            'retry_after' => 90,
             'block_for' => 0,
             'after_commit' => false,
         ],
@@ -65,9 +62,9 @@ return [
 
         'redis' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => 'default',
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'retry_after' => 90,
             'block_for' => null,
             'after_commit' => false,
         ],
@@ -79,9 +76,10 @@ return [
     | Job Batching
     |--------------------------------------------------------------------------
     |
-    | The following options configure the database and table that store job
-    | batching information. These options can be updated to any database
-    | connection and table which has been defined by your application.
+    | The following configuration options configure the database and table
+    | that store job batching information. These configuration options
+    | provide the batching system the details it needs to keep track of
+    | job progress, failed jobs, and retain batches for historical reference.
     |
     */
 
@@ -95,11 +93,10 @@ return [
     | Failed Queue Jobs
     |--------------------------------------------------------------------------
     |
-    | These options configure the behavior of failed queue job logging so you
-    | can control how and where failed jobs are stored. Laravel ships with
-    | support for storing failed jobs in a simple file or in a database.
-    |
-    | Supported drivers: "database-uuids", "dynamodb", "file", "null"
+    | These configuration options configure the behavior of failed queue
+    | job logging so you can control which database and table are used
+    | to store the jobs that have failed. You may change them to any
+    | database / table you wish.
     |
     */
 
@@ -107,6 +104,75 @@ return [
         'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
         'database' => env('DB_CONNECTION', 'sqlite'),
         'table' => 'failed_jobs',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Worker Supervisor Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure the queue worker supervisors for auto-scaling and monitoring
+    |
+    */
+
+    'supervisor' => [
+        'default' => [
+            'min_workers' => env('QUEUE_SUPERVISOR_DEFAULT_MIN_WORKERS', 2),
+            'max_workers' => env('QUEUE_SUPERVISOR_DEFAULT_MAX_WORKERS', 10),
+            'scale_up_threshold' => env('QUEUE_SUPERVISOR_DEFAULT_SCALE_UP', 50),
+            'scale_down_threshold' => env('QUEUE_SUPERVISOR_DEFAULT_SCALE_DOWN', 10),
+        ],
+
+        'high-priority' => [
+            'min_workers' => env('QUEUE_SUPERVISOR_HIGH_MIN_WORKERS', 3),
+            'max_workers' => env('QUEUE_SUPERVISOR_HIGH_MAX_WORKERS', 15),
+            'scale_up_threshold' => env('QUEUE_SUPERVISOR_HIGH_SCALE_UP', 25),
+            'scale_down_threshold' => env('QUEUE_SUPERVISOR_HIGH_SCALE_DOWN', 5),
+        ],
+
+        'low-priority' => [
+            'min_workers' => env('QUEUE_SUPERVISOR_LOW_MIN_WORKERS', 1),
+            'max_workers' => env('QUEUE_SUPERVISOR_LOW_MAX_WORKERS', 5),
+            'scale_up_threshold' => env('QUEUE_SUPERVISOR_LOW_SCALE_UP', 100),
+            'scale_down_threshold' => env('QUEUE_SUPERVISOR_LOW_SCALE_DOWN', 20),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Monitoring Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configure queue monitoring and alerting settings
+    |
+    */
+
+    'monitoring' => [
+        'enabled' => env('QUEUE_MONITORING_ENABLED', true),
+        'metrics_retention_days' => env('QUEUE_METRICS_RETENTION_DAYS', 30),
+        'alert_thresholds' => [
+            'pending_jobs' => env('QUEUE_ALERT_PENDING_JOBS', 1000),
+            'failed_jobs' => env('QUEUE_ALERT_FAILED_JOBS', 100),
+            'processing_time' => env('QUEUE_ALERT_PROCESSING_TIME', 300), // seconds
+        ],
+        'notification_channels' => ['mail', 'slack'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue Rate Limiting
+    |--------------------------------------------------------------------------
+    |
+    | Configure rate limiting for queue operations
+    |
+    */
+
+    'rate_limiting' => [
+        'enabled' => env('QUEUE_RATE_LIMITING_ENABLED', true),
+        'max_jobs_per_minute' => env('QUEUE_MAX_JOBS_PER_MINUTE', 1000),
+        'max_concurrent_jobs' => env('QUEUE_MAX_CONCURRENT_JOBS', 100),
+        'throttle_by_user' => env('QUEUE_THROTTLE_BY_USER', true),
+        'user_max_jobs_per_minute' => env('QUEUE_USER_MAX_JOBS_PER_MINUTE', 100),
     ],
 
 ];
