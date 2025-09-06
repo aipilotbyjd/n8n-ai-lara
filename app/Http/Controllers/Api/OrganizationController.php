@@ -3,378 +3,246 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\UserResource;
+use App\Http\Requests\StoreOrganizationRequest;
+use App\Http\Resources\OrganizationResource;
 use App\Models\Organization;
-use App\Models\Team;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
+use Illuminate\Http\Response;
 
+/**
+ * @OA\Tag(
+ *     name="Organizations",
+ *     description="Organization management endpoints"
+ * )
+ */
 class OrganizationController extends Controller
 {
     /**
-     * Get all organizations for the authenticated user
+     * @OA\Get(
+     *     path="/api/organizations",
+     *     summary="List organizations",
+     *     description="Get a list of organizations the authenticated user belongs to",
+     *     operationId="getOrganizations",
+     *     tags={"Organizations"},
+     *     security={{"sanctum": {}}},
+     *     @OA\Parameter(
+     *         name="page",
+     *         in="query",
+     *         description="Page number for pagination",
+     *         required=false,
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *     @OA\Parameter(
+     *         name="per_page",
+     *         in="query",
+     *         description="Number of items per page",
+     *         required=false,
+     *         @OA\Schema(type="integer", example=15)
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Organizations retrieved successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Organization")),
+     *             @OA\Property(property="current_page", type="integer", example=1),
+     *             @OA\Property(property="per_page", type="integer", example=15),
+     *             @OA\Property(property="total", type="integer", example=25)
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=401,
+     *         description="Unauthorized",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
+     *         )
+     *     )
+     * )
      */
     public function index(Request $request): JsonResponse
     {
-        $organizations = $request->user()->organizations()
+        $organizations = $request->user()
+            ->organizations()
             ->with(['owner', 'teams'])
-            ->withCount(['users', 'teams', 'workflows'])
-            ->get();
-
-        // Also include organizations owned by the user
-        $ownedOrganizations = $request->user()->ownedOrganizations()
-            ->with(['owner', 'teams'])
-            ->withCount(['users', 'teams', 'workflows'])
-            ->get();
-
-        $allOrganizations = $organizations->merge($ownedOrganizations)->unique('id');
+            ->paginate($request->get('per_page', 15));
 
         return response()->json([
-            'organizations' => $allOrganizations->map(function ($org) use ($request) {
-                return [
-                    'id' => $org->id,
-                    'name' => $org->name,
-                    'slug' => $org->slug,
-                    'description' => $org->description,
-                    'owner' => new UserResource($org->owner),
-                    'role' => $request->user()->getOrganizationRole($org),
-                    'is_active' => $org->is_active,
-                    'subscription_status' => $org->subscription_status,
-                    'subscription_plan' => $org->subscription_plan,
-                    'trial_ends_at' => $org->trial_ends_at,
-                    'members_count' => $org->members_count,
-                    'teams_count' => $org->teams_count,
-                    'workflows_count' => $org->workflows_count,
-                    'has_active_subscription' => $org->hasActiveSubscription(),
-                    'created_at' => $org->created_at,
-                    'updated_at' => $org->updated_at,
-                ];
-            }),
+            'data' => OrganizationResource::collection($organizations),
+            'current_page' => $organizations->currentPage(),
+            'per_page' => $organizations->perPage(),
+            'total' => $organizations->total(),
         ]);
     }
 
     /**
-     * Create a new organization
+     * @OA\Post(
+     *     path="/api/organizations",
+     *     summary="Create organization",
+     *     description="Create a new organization",
+     *     operationId="createOrganization",
+     *     tags={"Organizations"},
+     *     security={{"sanctum": {}}},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"name"},
+     *             @OA\Property(property="name", type="string", example="My Company", description="Organization name"),
+     *             @OA\Property(property="description", type="string", example="Company description", description="Organization description"),
+     *             @OA\Property(property="slug", type="string", example="my-company", description="URL-friendly identifier")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Organization created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/Organization"),
+     *             @OA\Property(property="message", type="string", example="Organization created successfully")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=422,
+     *         description="Validation error",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Validation failed"),
+     *             @OA\Property(property="errors", type="object")
+     *         )
+     *     )
+     * )
      */
-    public function store(Request $request): JsonResponse
+    public function store(StoreOrganizationRequest $request): JsonResponse
     {
-        $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
-        ]);
-
-        $slug = Str::slug($request->name);
-        $originalSlug = $slug;
-        $counter = 1;
-
-        // Ensure unique slug
-        while (Organization::where('slug', $slug)->exists()) {
-            $slug = $originalSlug . '-' . $counter;
-            $counter++;
-        }
-
         $organization = Organization::create([
             'name' => $request->name,
-            'slug' => $slug,
+            'slug' => $request->slug ?? \Str::slug($request->name),
             'description' => $request->description,
             'owner_id' => $request->user()->id,
-            'trial_ends_at' => now()->addDays(14), // 14-day trial
-        ]);
-
-        // Add owner as admin member
-        $organization->users()->attach($request->user()->id, [
-            'role' => 'admin',
-            'joined_at' => now(),
         ]);
 
         return response()->json([
+            'data' => new OrganizationResource($organization->load(['owner', 'teams'])),
             'message' => 'Organization created successfully',
-            'organization' => [
-                'id' => $organization->id,
-                'name' => $organization->name,
-                'slug' => $organization->slug,
-                'description' => $organization->description,
-                'owner' => new UserResource($organization->owner),
-                'role' => 'owner',
-                'is_active' => $organization->is_active,
-                'subscription_status' => $organization->subscription_status,
-                'trial_ends_at' => $organization->trial_ends_at,
-                'has_active_subscription' => $organization->hasActiveSubscription(),
-                'created_at' => $organization->created_at,
-            ],
-        ], 201);
+        ], Response::HTTP_CREATED);
     }
 
     /**
-     * Get a specific organization
+     * @OA\Get(
+     *     path="/api/organizations/{organization}",
+     *     summary="Get organization",
+     *     description="Get a specific organization by ID",
+     *     operationId="getOrganization",
+     *     tags={"Organizations"},
+     *     security={{"sanctum": {}}},
+     *     @OA\Parameter(
+     *         name="organization",
+     *         in="path",
+     *         description="Organization ID",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Organization retrieved successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/Organization")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=404,
+     *         description="Organization not found",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="Organization not found")
+     *         )
+     *     )
+     * )
      */
-    public function show(Request $request, Organization $organization): JsonResponse
+    public function show(Organization $organization): JsonResponse
     {
-        // Check if user has access to this organization
-        if (!$organization->isMember($request->user())) {
-            return response()->json([
-                'message' => 'You do not have access to this organization',
-            ], 403);
-        }
-
-        $organization->load(['owner', 'teams', 'users'])
-            ->loadCount(['workflows', 'credentials', 'executions']);
+        $this->authorize('view', $organization);
 
         return response()->json([
-            'organization' => [
-                'id' => $organization->id,
-                'name' => $organization->name,
-                'slug' => $organization->slug,
-                'description' => $organization->description,
-                'owner' => new UserResource($organization->owner),
-                'role' => $request->user()->getOrganizationRole($organization),
-                'is_active' => $organization->is_active,
-                'subscription_status' => $organization->subscription_status,
-                'subscription_plan' => $organization->subscription_plan,
-                'trial_ends_at' => $organization->trial_ends_at,
-                'subscription_ends_at' => $organization->subscription_ends_at,
-                'settings' => $organization->settings,
-                'members' => $organization->users->map(function ($user) use ($organization) {
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'email' => $user->email,
-                        'role' => $user->organizations()->where('organization_id', $organization->id)->first()?->pivot?->role ?? 'member',
-                        'joined_at' => $user->organizations()->where('organization_id', $organization->id)->first()?->pivot?->joined_at,
-                    ];
-                }),
-                'teams' => $organization->teams->map(function ($team) {
-                    return [
-                        'id' => $team->id,
-                        'name' => $team->name,
-                        'slug' => $team->slug,
-                        'description' => $team->description,
-                        'color' => $team->color,
-                        'members_count' => $team->getMembersCount(),
-                        'workflows_count' => $team->getWorkflowsCount(),
-                        'created_at' => $team->created_at,
-                    ];
-                }),
-                'stats' => [
-                    'members_count' => $organization->users()->count() + 1, // +1 for owner
-                    'teams_count' => $organization->teams()->count(),
-                    'workflows_count' => $organization->workflows_count,
-                    'credentials_count' => $organization->credentials_count,
-                    'executions_count' => $organization->executions_count,
-                ],
-                'has_active_subscription' => $organization->hasActiveSubscription(),
-                'created_at' => $organization->created_at,
-                'updated_at' => $organization->updated_at,
-            ],
+            'data' => new OrganizationResource($organization->load(['owner', 'teams', 'workflows'])),
         ]);
     }
 
     /**
-     * Update organization
+     * @OA\Put(
+     *     path="/api/organizations/{organization}",
+     *     summary="Update organization",
+     *     description="Update an existing organization",
+     *     operationId="updateOrganization",
+     *     tags={"Organizations"},
+     *     security={{"sanctum": {}}},
+     *     @OA\Parameter(
+     *         name="organization",
+     *         in="path",
+     *         description="Organization ID",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             @OA\Property(property="name", type="string", example="Updated Company Name"),
+     *             @OA\Property(property="description", type="string", example="Updated description"),
+     *             @OA\Property(property="slug", type="string", example="updated-company")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=200,
+     *         description="Organization updated successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="data", ref="#/components/schemas/Organization"),
+     *             @OA\Property(property="message", type="string", example="Organization updated successfully")
+     *         )
+     *     )
+     * )
      */
     public function update(Request $request, Organization $organization): JsonResponse
     {
-        // Check if user can manage this organization
-        if (!$request->user()->canManageOrganization($organization)) {
-            return response()->json([
-                'message' => 'You do not have permission to update this organization',
-            ], 403);
-        }
+        $this->authorize('update', $organization);
 
-        $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'settings' => ['sometimes', 'array'],
-        ]);
-
-        if ($request->has('name')) {
-            $slug = Str::slug($request->name);
-            $originalSlug = $slug;
-            $counter = 1;
-
-            // Ensure unique slug
-            while (Organization::where('slug', $slug)->where('id', '!=', $organization->id)->exists()) {
-                $slug = $originalSlug . '-' . $counter;
-                $counter++;
-            }
-
-            $organization->slug = $slug;
-        }
-
-        $organization->update($request->only(['name', 'description', 'settings']));
+        $organization->update($request->validated());
 
         return response()->json([
+            'data' => new OrganizationResource($organization->fresh(['owner', 'teams'])),
             'message' => 'Organization updated successfully',
-            'organization' => [
-                'id' => $organization->id,
-                'name' => $organization->name,
-                'slug' => $organization->slug,
-                'description' => $organization->description,
-                'settings' => $organization->settings,
-                'updated_at' => $organization->updated_at,
-            ],
         ]);
     }
 
     /**
-     * Delete organization
+     * @OA\Delete(
+     *     path="/api/organizations/{organization}",
+     *     summary="Delete organization",
+     *     description="Delete an organization",
+     *     operationId="deleteOrganization",
+     *     tags={"Organizations"},
+     *     security={{"sanctum": {}}},
+     *     @OA\Parameter(
+     *         name="organization",
+     *         in="path",
+     *         description="Organization ID",
+     *         required=true,
+     *         @OA\Schema(type="integer")
+     *     ),
+     *     @OA\Response(
+     *         response=204,
+     *         description="Organization deleted successfully"
+     *     ),
+     *     @OA\Response(
+     *         response=403,
+     *         description="Forbidden",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="message", type="string", example="This action is unauthorized.")
+     *         )
+     *     )
+     * )
      */
-    public function destroy(Request $request, Organization $organization): JsonResponse
+    public function destroy(Organization $organization): JsonResponse
     {
-        // Only owner can delete organization
-        if (!$organization->isOwner($request->user())) {
-            return response()->json([
-                'message' => 'Only the organization owner can delete the organization',
-            ], 403);
-        }
+        $this->authorize('delete', $organization);
 
         $organization->delete();
 
-        return response()->json([
-            'message' => 'Organization deleted successfully',
-        ]);
-    }
-
-    /**
-     * Add member to organization
-     */
-    public function addMember(Request $request, Organization $organization): JsonResponse
-    {
-        // Check if user can manage this organization
-        if (!$request->user()->canManageOrganization($organization)) {
-            return response()->json([
-                'message' => 'You do not have permission to manage this organization',
-            ], 403);
-        }
-
-        $request->validate([
-            'email' => ['required', 'email', 'exists:users,email'],
-            'role' => ['required', Rule::in(['member', 'admin'])],
-        ]);
-
-        $user = User::where('email', $request->email)->first();
-
-        // Check if user is already a member
-        if ($organization->isMember($user)) {
-            return response()->json([
-                'message' => 'User is already a member of this organization',
-            ], 422);
-        }
-
-        $organization->users()->attach($user->id, [
-            'role' => $request->role,
-            'joined_at' => now(),
-        ]);
-
-        return response()->json([
-            'message' => 'Member added successfully',
-            'member' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $request->role,
-                'joined_at' => now(),
-            ],
-        ]);
-    }
-
-    /**
-     * Update member role
-     */
-    public function updateMember(Request $request, Organization $organization, User $user): JsonResponse
-    {
-        // Check if user can manage this organization
-        if (!$request->user()->canManageOrganization($organization)) {
-            return response()->json([
-                'message' => 'You do not have permission to manage this organization',
-            ], 403);
-        }
-
-        $request->validate([
-            'role' => ['required', Rule::in(['member', 'admin'])],
-        ]);
-
-        // Check if target user is a member
-        if (!$organization->isMember($user)) {
-            return response()->json([
-                'message' => 'User is not a member of this organization',
-            ], 404);
-        }
-
-        $organization->users()->updateExistingPivot($user->id, [
-            'role' => $request->role,
-        ]);
-
-        return response()->json([
-            'message' => 'Member role updated successfully',
-            'member' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $request->role,
-            ],
-        ]);
-    }
-
-    /**
-     * Remove member from organization
-     */
-    public function removeMember(Request $request, Organization $organization, User $user): JsonResponse
-    {
-        // Check if user can manage this organization
-        if (!$request->user()->canManageOrganization($organization)) {
-            return response()->json([
-                'message' => 'You do not have permission to manage this organization',
-            ], 403);
-        }
-
-        // Cannot remove owner
-        if ($organization->isOwner($user)) {
-            return response()->json([
-                'message' => 'Cannot remove the organization owner',
-            ], 422);
-        }
-
-        // Check if target user is a member
-        if (!$organization->isMember($user)) {
-            return response()->json([
-                'message' => 'User is not a member of this organization',
-            ], 404);
-        }
-
-        $organization->users()->detach($user->id);
-
-        return response()->json([
-            'message' => 'Member removed successfully',
-        ]);
-    }
-
-    /**
-     * Switch to organization context
-     */
-    public function switchTo(Request $request, Organization $organization): JsonResponse
-    {
-        // Check if user is a member
-        if (!$organization->isMember($request->user())) {
-            return response()->json([
-                'message' => 'You are not a member of this organization',
-            ], 403);
-        }
-
-        // Store current organization in session/user context
-        // This would typically be handled by middleware or session management
-
-        return response()->json([
-            'message' => 'Switched to organization successfully',
-            'organization' => [
-                'id' => $organization->id,
-                'name' => $organization->name,
-                'slug' => $organization->slug,
-                'role' => $request->user()->getOrganizationRole($organization),
-            ],
-        ]);
+        return response()->json(null, Response::HTTP_NO_CONTENT);
     }
 }

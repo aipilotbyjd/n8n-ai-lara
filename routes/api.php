@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ApiDocumentationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\TeamController;
@@ -60,11 +61,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// API Health Check
-Route::get('/health', function () {
-    return response()->json([
-        'status' => 'ok',
-        'message' => 'API is running',
-        'timestamp' => now()->toISOString(),
-    ]);
-});
+// API Documentation and Monitoring Routes
+Route::get('/health', [ApiDocumentationController::class, 'health']);
+Route::get('/metrics', [ApiDocumentationController::class, 'metrics'])->middleware('auth:sanctum');
+Route::get('/queue/status', [ApiDocumentationController::class, 'queueStatus'])->middleware('auth:sanctum');
