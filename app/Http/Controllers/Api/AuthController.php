@@ -13,64 +13,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
-/**
- * @OA\Tag(
- *     name="Authentication",
- *     description="User authentication endpoints"
- * )
- */
 class AuthController extends Controller
 {
-    /**
-     * @OA\Post(
-     *     path="/api/auth/register",
-     *     summary="Register a new user",
-     *     description="Create a new user account and return authentication token",
-     *     operationId="register",
-     *     tags={"Authentication"},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"name","email","password","password_confirmation"},
-     *             @OA\Property(property="name", type="string", example="John Doe", description="User's full name"),
-     *             @OA\Property(property="email", type="string", format="email", example="john@example.com", description="User's email address"),
-     *             @OA\Property(property="password", type="string", format="password", example="password123", description="User's password"),
-     *             @OA\Property(property="password_confirmation", type="string", format="password", example="password123", description="Password confirmation")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=201,
-     *         description="User registered successfully",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="message", type="string", example="User registered successfully"),
-     *             @OA\Property(property="data", type="object",
-     *                 @OA\Property(property="user", ref="#/components/schemas/User"),
-     *                 @OA\Property(property="token", type="string", example="1|abc123def456", description="Bearer token for authentication")
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=422,
-     *         description="Validation error",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=false),
-     *             @OA\Property(property="message", type="string", example="Validation failed"),
-     *             @OA\Property(property="errors", type="object",
-     *                 @OA\Property(property="email", type="array", @OA\Items(type="string", example="The email has already been taken."))
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal server error",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=false),
-     *             @OA\Property(property="message", type="string", example="Internal server error")
-     *         )
-     *     )
-     * )
-     */
+    /** */
     public function register(RegisterRequest $request): JsonResponse
     {
         try {
@@ -96,52 +41,7 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * @OA\Post(
-     *     path="/api/auth/login",
-     *     summary="Authenticate user",
-     *     description="Login with email and password to receive authentication token",
-     *     operationId="login",
-     *     tags={"Authentication"},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"email","password"},
-     *             @OA\Property(property="email", type="string", format="email", example="john@example.com", description="User's email address"),
-     *             @OA\Property(property="password", type="string", format="password", example="password123", description="User's password"),
-     *             @OA\Property(property="device_name", type="string", example="My Laptop", description="Device name for token identification")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=200,
-     *         description="Login successful",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="Login successful"),
-     *             @OA\Property(property="user", ref="#/components/schemas/User"),
-     *             @OA\Property(property="token", type="string", example="1|abc123def456", description="Bearer token for authentication"),
-     *             @OA\Property(property="token_type", type="string", example="Bearer")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=422,
-     *         description="Invalid credentials",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="The provided credentials are incorrect."),
-     *             @OA\Property(property="errors", type="object",
-     *                 @OA\Property(property="email", type="array", @OA\Items(type="string", example="The provided credentials are incorrect."))
-     *             )
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=500,
-     *         description="Internal server error",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=false),
-     *             @OA\Property(property="message", type="string", example="Internal server error")
-     *         )
-     *     )
-     * )
-     */
+    /** */
     public function login(LoginRequest $request): JsonResponse
     {
         if (!Auth::attempt($request->only('email', 'password'))) {
@@ -166,30 +66,7 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * @OA\Post(
-     *     path="/api/auth/logout",
-     *     summary="Logout user",
-     *     description="Revoke the current authentication token",
-     *     operationId="logout",
-     *     tags={"Authentication"},
-     *     security={{"sanctum": {}}},
-     *     @OA\Response(
-     *         response=200,
-     *         description="Logout successful",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="Logged out successfully")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=401,
-     *         description="Unauthorized",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
-     *         )
-     *     )
-     * )
-     */
+    /** */
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
@@ -211,30 +88,7 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * @OA\Get(
-     *     path="/api/user",
-     *     summary="Get user profile",
-     *     description="Get the authenticated user's profile information",
-     *     operationId="getProfile",
-     *     tags={"Authentication"},
-     *     security={{"sanctum": {}}},
-     *     @OA\Response(
-     *         response=200,
-     *         description="User profile retrieved successfully",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="user", ref="#/components/schemas/User")
-     *         )
-     *     ),
-     *     @OA\Response(
-     *         response=401,
-     *         description="Unauthorized",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="message", type="string", example="Unauthenticated.")
-     *         )
-     *     )
-     * )
-     */
+    /** */
     public function profile(Request $request): JsonResponse
     {
         return response()->json([
