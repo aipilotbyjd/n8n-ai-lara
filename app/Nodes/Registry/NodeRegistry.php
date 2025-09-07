@@ -193,6 +193,14 @@ class NodeRegistry
             \App\Nodes\Core\HttpRequestNode::class,
             \App\Nodes\Core\DatabaseQueryNode::class,
             \App\Nodes\Core\EmailNode::class,
+            \App\Nodes\Core\ScheduleTriggerNode::class,
+            \App\Nodes\Core\DataTransformationNode::class,
+            \App\Nodes\Core\SwitchNode::class,
+            \App\Nodes\Core\LoopNode::class,
+            \App\Nodes\Core\EmailTriggerNode::class,
+            \App\Nodes\Core\SlackNode::class,
+            \App\Nodes\Core\SetNode::class,
+            \App\Nodes\Core\WaitNode::class,
         ];
 
         foreach ($coreNodes as $nodeClass) {
