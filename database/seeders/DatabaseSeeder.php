@@ -27,6 +27,15 @@ class DatabaseSeeder extends Seeder
 
         // Create sample teams
         $this->createTeams();
+
+        // Create sample workflows
+        $this->call(WorkflowSeeder::class);
+
+        // Create sample executions
+        $this->call(ExecutionSeeder::class);
+
+        // Create sample credentials
+        $this->call(CredentialSeeder::class);
     }
 
     private function createPlans(): void
@@ -139,6 +148,9 @@ class DatabaseSeeder extends Seeder
         foreach ($users as $userData) {
             User::create($userData);
         }
+
+        // Update users with current_organization_id
+        $this->updateUserOrganizations();
     }
 
     private function createOrganizations(): void
@@ -262,6 +274,30 @@ class DatabaseSeeder extends Seeder
                         'joined_at' => now()->subDays(rand(1, 20)),
                     ]);
                 }
+            }
+        }
+    }
+
+    private function updateUserOrganizations(): void
+    {
+        $users = User::all();
+        $organizations = Organization::all();
+
+        if ($users->isEmpty() || $organizations->isEmpty()) {
+            return;
+        }
+
+        foreach ($users as $user) {
+            // Find organizations where this user is a member
+            $userOrganizations = $organizations->filter(function ($org) use ($user) {
+                return $org->users()->where('user_id', $user->id)->exists() || $org->owner_id === $user->id;
+            });
+
+            if ($userOrganizations->isNotEmpty()) {
+                // Set the first organization as current
+                $user->update([
+                    'current_organization_id' => $userOrganizations->first()->id,
+                ]);
             }
         }
     }
