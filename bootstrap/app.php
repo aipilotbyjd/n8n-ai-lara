@@ -15,6 +15,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.key' => \App\Http\Middleware\ApiKeyAuth::class,
             'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'performance' => \App\Http\Middleware\PerformanceMonitor::class,
+        ]);
+
+        // Add performance monitoring to API routes
+        $middleware->api(prepend: [
+            \App\Http\Middleware\PerformanceMonitor::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

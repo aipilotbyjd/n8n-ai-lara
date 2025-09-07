@@ -70,7 +70,18 @@ class Workflow extends Model
      */
     public function executions(): HasMany
     {
-        return $this->hasMany(Execution::class);
+        return $this->hasMany(Execution::class)->latest();
+    }
+
+    /**
+     * Get executions with optimized loading
+     */
+    public function executionsOptimized(): HasMany
+    {
+        return $this->hasMany(Execution::class)
+            ->select(['id', 'workflow_id', 'status', 'started_at', 'finished_at', 'duration'])
+            ->latest()
+            ->limit(10);
     }
 
     /**

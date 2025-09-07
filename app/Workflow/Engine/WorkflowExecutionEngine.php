@@ -258,57 +258,43 @@ class WorkflowExecutionEngine
             }
         }
 
-        // Execute subsequent nodes based on connections
+        // Execute subsequent nodes based on connections with optimization
         $executedNodes = array_keys($results);
         $maxIterations = 100; // Prevent infinite loops
         $iteration = 0;
 
-        while ($iteration < $maxIterations) {
+        // Pre-calculate dependencies for better performance
+        $nodeDependencies = $this->buildDependencyGraph($connections);
+        $readyNodes = $this->findReadyNodes($connections, $executedNodes);
+
+        while ($iteration < $maxIterations && !empty($readyNodes)) {
             $newlyExecutedNodes = [];
 
-            foreach ($connections as $connection) {
-                $sourceNodeId = $connection['source'] ?? '';
-                $targetNodeId = $connection['target'] ?? '';
-
-                // Skip if source node hasn't been executed yet
-                if (!in_array($sourceNodeId, $executedNodes)) {
-                    continue;
+            // Execute ready nodes in parallel if possible
+            if (count($readyNodes) > 1 && $this->canExecuteInParallel($readyNodes, $connections)) {
+                $parallelResults = $this->executeNodesInParallel($workflow, $execution, $readyNodes, $nodes, $results);
+                foreach ($parallelResults as $nodeId => $result) {
+                    $results[$nodeId] = $result;
+                    $newlyExecutedNodes[] = $nodeId;
                 }
-
-                // Skip if target node has already been executed
-                if (in_array($targetNodeId, $executedNodes)) {
-                    continue;
-                }
-
-                // Get source node result
-                $sourceResult = $results[$sourceNodeId] ?? null;
-                if (!$sourceResult || !$sourceResult->isSuccess()) {
-                    continue;
-                }
-
-                // Execute target node
-                $targetNodeData = $nodes->firstWhere('id', $targetNodeId);
-                if ($targetNodeData) {
-                    $inputData = $sourceResult->getOutputData();
-                    $result = $this->executeNode($workflow, $execution, $targetNodeId, $targetNodeData, $inputData);
-
-                    $results[$targetNodeId] = $result;
-                    $newlyExecutedNodes[] = $targetNodeId;
-
-                    if (!$result->isSuccess()) {
-                        Log::warning("Node '{$targetNodeId}' execution failed", [
-                            'error' => $result->getErrorMessage(),
-                        ]);
-                        // Continue with other nodes instead of failing completely
+            } else {
+                // Execute nodes sequentially
+                foreach ($readyNodes as $targetNodeId) {
+                    $result = $this->executeTargetNode($workflow, $execution, $targetNodeId, $nodes, $results, $connections);
+                    if ($result) {
+                        $results[$targetNodeId] = $result;
+                        $newlyExecutedNodes[] = $targetNodeId;
                     }
                 }
             }
 
-            if (empty($newlyExecutedNodes)) {
+            if (!empty($newlyExecutedNodes)) {
+                $executedNodes = array_merge($executedNodes, $newlyExecutedNodes);
+                $readyNodes = $this->findReadyNodes($connections, $executedNodes);
+            } else {
                 break; // No more nodes to execute
             }
 
-            $executedNodes = array_merge($executedNodes, $newlyExecutedNodes);
             $iteration++;
         }
 
@@ -398,6 +384,138 @@ class WorkflowExecutionEngine
             'errors' => $errors,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * Build dependency graph for optimization
+     */
+    private function buildDependencyGraph(Collection $connections): array
+    {
+        $graph = [];
+
+        foreach ($connections as $connection) {
+            $source = $connection['source'] ?? '';
+            $target = $connection['target'] ?? '';
+
+            if (!isset($graph[$target])) {
+                $graph[$target] = [];
+            }
+            $graph[$target][] = $source;
+        }
+
+        return $graph;
+    }
+
+    /**
+     * Find nodes that are ready to execute
+     */
+    private function findReadyNodes(Collection $connections, array $executedNodes): array
+    {
+        $readyNodes = [];
+        $targetNodes = $connections->pluck('target')->unique()->toArray();
+
+        foreach ($targetNodes as $targetNode) {
+            if (in_array($targetNode, $executedNodes)) {
+                continue;
+            }
+
+            // Check if all source nodes are executed
+            $sourceNodes = $connections->where('target', $targetNode)->pluck('source')->toArray();
+            $allSourcesExecuted = true;
+
+            foreach ($sourceNodes as $sourceNode) {
+                if (!in_array($sourceNode, $executedNodes)) {
+                    $allSourcesExecuted = false;
+                    break;
+                }
+            }
+
+            if ($allSourcesExecuted) {
+                $readyNodes[] = $targetNode;
+            }
+        }
+
+        return $readyNodes;
+    }
+
+    /**
+     * Check if nodes can be executed in parallel
+     */
+    private function canExecuteInParallel(array $nodeIds, Collection $connections): bool
+    {
+        // Check if any of the nodes have dependencies on each other
+        foreach ($nodeIds as $nodeId) {
+            $sourceConnections = $connections->where('source', $nodeId)->pluck('target')->toArray();
+
+            if (array_intersect($nodeIds, $sourceConnections)) {
+                return false; // Found dependency within the group
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Execute multiple nodes in parallel
+     */
+    private function executeNodesInParallel(Workflow $workflow, Execution $execution, array $nodeIds, Collection $nodes, array $existingResults): array
+    {
+        $results = [];
+
+        // In a real implementation, you would use proper parallel processing
+        // For now, we'll simulate parallel execution
+        foreach ($nodeIds as $nodeId) {
+            $result = $this->executeTargetNode($workflow, $execution, $nodeId, $nodes, $existingResults, collect([]));
+            if ($result) {
+                $results[$nodeId] = $result;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Execute a single target node
+     */
+    private function executeTargetNode(Workflow $workflow, Execution $execution, string $targetNodeId, Collection $nodes, array $results, Collection $connections)
+    {
+        // Find all source connections for this target
+        $sourceConnections = $connections->where('target', $targetNodeId);
+
+        if ($sourceConnections->isEmpty()) {
+            return null;
+        }
+
+        // Get input data from first successful source
+        $inputData = [];
+        foreach ($sourceConnections as $connection) {
+            $sourceNodeId = $connection['source'] ?? '';
+            $sourceResult = $results[$sourceNodeId] ?? null;
+
+            if ($sourceResult && $sourceResult->isSuccess()) {
+                $inputData = array_merge($inputData, $sourceResult->getOutputData());
+            }
+        }
+
+        if (empty($inputData)) {
+            return null;
+        }
+
+        // Execute the target node
+        $targetNodeData = $nodes->firstWhere('id', $targetNodeId);
+        if (!$targetNodeData) {
+            return null;
+        }
+
+        $result = $this->executeNode($workflow, $execution, $targetNodeId, $targetNodeData, $inputData);
+
+        if (!$result->isSuccess()) {
+            Log::warning("Node '{$targetNodeId}' execution failed", [
+                'error' => $result->getErrorMessage(),
+            ]);
+        }
+
+        return $result;
     }
 
     /**

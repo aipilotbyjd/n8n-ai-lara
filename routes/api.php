@@ -117,6 +117,13 @@ Route::prefix('webhooks')->group(function () {
     Route::put('/{workflowId}', [WorkflowController::class, 'webhookTrigger']);
 });
 
+// Performance monitoring routes
+Route::middleware('auth:sanctum')->prefix('performance')->group(function () {
+    Route::get('/dashboard', [App\Http\Controllers\PerformanceDashboardController::class, 'dashboard']);
+    Route::post('/optimize', [App\Http\Controllers\PerformanceDashboardController::class, 'optimize']);
+    Route::delete('/metrics', [App\Http\Controllers\PerformanceDashboardController::class, 'clearMetrics']);
+});
+
 // Legacy user route (for backward compatibility)
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();

@@ -31,8 +31,13 @@ class WorkflowController extends Controller
     {
         $user = $request->user();
 
-        $query = Workflow::with(['organization', 'team', 'user', 'latestExecution'])
-            ->forUser($user);
+        // Optimized eager loading with selective fields
+        $query = Workflow::with([
+            'organization:id,name',
+            'team:id,name,organization_id',
+            'user:id,name,email',
+            'executionsOptimized:id,workflow_id,status,duration,started_at,finished_at'
+        ])->forUser($user);
 
         // Apply filters
         if ($request->has('status')) {
