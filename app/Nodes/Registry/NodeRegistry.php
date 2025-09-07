@@ -17,6 +17,7 @@ class NodeRegistry
         $this->nodes = collect();
         $this->categories = [];
         $this->loadCoreNodes();
+        $this->autoDiscover();
     }
 
     /**
@@ -186,8 +187,26 @@ class NodeRegistry
      */
     private function loadCoreNodes(): void
     {
-        // This will be implemented when we create the core node classes
-        // For now, we'll leave this empty and load nodes manually
+        // Register core nodes
+        $coreNodes = [
+            \App\Nodes\Core\WebhookTriggerNode::class,
+            \App\Nodes\Core\HttpRequestNode::class,
+            \App\Nodes\Core\DatabaseQueryNode::class,
+            \App\Nodes\Core\EmailNode::class,
+        ];
+
+        foreach ($coreNodes as $nodeClass) {
+            if (class_exists($nodeClass)) {
+                try {
+                    $node = new $nodeClass();
+                    $this->register($node);
+                } catch (\Throwable $e) {
+                    Log::error("Failed to register node {$nodeClass}", [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
     }
 
     /**
@@ -195,8 +214,71 @@ class NodeRegistry
      */
     public function autoDiscover(): void
     {
-        // Implementation for auto-discovering nodes from app/Nodes directory
-        // This would scan for classes implementing NodeInterface
+        $directories = [
+            app_path('Nodes/Core'),
+            app_path('Nodes/Custom'),
+        ];
+
+        foreach ($directories as $directory) {
+            if (!is_dir($directory)) {
+                continue;
+            }
+
+            $files = glob($directory . '/*.php');
+            foreach ($files as $file) {
+                $className = $this->getClassNameFromFile($file);
+                if ($className && $this->isValidNodeClass($className)) {
+                    try {
+                        $node = new $className();
+                        $this->register($node);
+                    } catch (\Throwable $e) {
+                        Log::error("Failed to auto-discover node from {$file}", [
+                            'class' => $className,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Get class name from PHP file
+     */
+    private function getClassNameFromFile(string $filePath): ?string
+    {
+        $content = file_get_contents($filePath);
+        if (!$content) {
+            return null;
+        }
+
+        // Extract namespace and class name
+        if (preg_match('/namespace\s+([^;]+);/', $content, $namespaceMatch)) {
+            $namespace = $namespaceMatch[1];
+        } else {
+            return null;
+        }
+
+        if (preg_match('/class\s+([^\s]+)/', $content, $classMatch)) {
+            $className = $classMatch[1];
+        } else {
+            return null;
+        }
+
+        return $namespace . '\\' . $className;
+    }
+
+    /**
+     * Check if class is a valid node class
+     */
+    private function isValidNodeClass(string $className): bool
+    {
+        if (!class_exists($className)) {
+            return false;
+        }
+
+        $reflection = new \ReflectionClass($className);
+        return $reflection->implementsInterface(\App\Nodes\Interfaces\NodeInterface::class);
     }
 
     /**

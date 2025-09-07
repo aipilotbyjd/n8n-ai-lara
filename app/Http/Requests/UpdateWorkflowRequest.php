@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreWorkflowRequest extends FormRequest
+class UpdateWorkflowRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -19,9 +19,11 @@ class StoreWorkflowRequest extends FormRequest
      */
     public function rules(): array
     {
+        $workflowId = $this->route('workflow')->id ?? null;
+
         return [
-            'name' => 'required|string|max:255',
-            'slug' => 'nullable|string|max:255|unique:workflows,slug',
+            'name' => 'sometimes|required|string|max:255',
+            'slug' => 'sometimes|nullable|string|max:255|unique:workflows,slug,' . $workflowId,
             'description' => 'nullable|string|max:1000',
             'organization_id' => 'nullable|exists:organizations,id',
             'team_id' => 'nullable|exists:teams,id',
@@ -59,33 +61,11 @@ class StoreWorkflowRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        // Auto-generate slug if not provided
-        if (!$this->has('slug') && $this->has('name')) {
+        // Auto-generate slug if name is being updated and slug is not provided
+        if ($this->has('name') && !$this->has('slug')) {
             $this->merge([
                 'slug' => \Illuminate\Support\Str::slug($this->name) . '-' . time(),
             ]);
-        }
-
-        // Set default status
-        if (!$this->has('status')) {
-            $this->merge([
-                'status' => 'draft',
-            ]);
-        }
-
-        // Set default values
-        $defaults = [
-            'is_active' => false,
-            'is_template' => false,
-            'workflow_data' => [],
-            'settings' => [],
-            'tags' => [],
-        ];
-
-        foreach ($defaults as $field => $defaultValue) {
-            if (!$this->has($field)) {
-                $this->merge([$field => $defaultValue]);
-            }
         }
     }
 }

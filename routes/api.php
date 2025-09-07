@@ -1,8 +1,11 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ExecutionController;
+use App\Http\Controllers\Api\NodeController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\TeamController;
+use App\Http\Controllers\Api\WorkflowController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -54,8 +57,67 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
-    // Legacy user route (for backward compatibility)
-    Route::get('/user', function (Request $request) {
-        return $request->user();
+    // Workflow routes
+    Route::prefix('workflows')->group(function () {
+        Route::get('/', [WorkflowController::class, 'index']);
+        Route::post('/', [WorkflowController::class, 'store']);
+        Route::get('/{workflow}', [WorkflowController::class, 'show']);
+        Route::put('/{workflow}', [WorkflowController::class, 'update']);
+        Route::delete('/{workflow}', [WorkflowController::class, 'destroy']);
+
+        // Workflow actions
+        Route::post('/{workflow}/execute', [WorkflowController::class, 'execute']);
+        Route::post('/{workflow}/test-execute', [WorkflowController::class, 'testExecute']);
+        Route::post('/{workflow}/duplicate', [WorkflowController::class, 'duplicate']);
+        Route::get('/{workflow}/statistics', [WorkflowController::class, 'statistics']);
+        Route::get('/{workflow}/export', [WorkflowController::class, 'export']);
     });
+
+    // Workflow import route
+    Route::post('/workflows/import', [WorkflowController::class, 'import']);
+
+    // Execution routes
+    Route::prefix('executions')->group(function () {
+        Route::get('/', [ExecutionController::class, 'index']);
+        Route::get('/{execution}', [ExecutionController::class, 'show']);
+        Route::post('/{execution}/cancel', [ExecutionController::class, 'cancel']);
+        Route::post('/{execution}/retry', [ExecutionController::class, 'retry']);
+        Route::get('/{execution}/logs', [ExecutionController::class, 'logs']);
+        Route::get('/statistics', [ExecutionController::class, 'statistics']);
+        Route::post('/bulk-cancel', [ExecutionController::class, 'bulkCancel']);
+        Route::post('/bulk-delete', [ExecutionController::class, 'bulkDelete']);
+    });
+
+    // Workflow executions
+    Route::get('/workflows/{workflow}/executions', [ExecutionController::class, 'workflowExecutions']);
+
+    // Node routes
+    Route::prefix('nodes')->group(function () {
+        Route::get('/', [NodeController::class, 'index']);
+        Route::get('/manifest', [NodeController::class, 'manifest']);
+        Route::get('/categories', [NodeController::class, 'categories']);
+        Route::get('/statistics', [NodeController::class, 'statistics']);
+        Route::get('/search', [NodeController::class, 'search']);
+        Route::post('/refresh-cache', [NodeController::class, 'refreshCache']);
+
+        Route::get('/{nodeId}', [NodeController::class, 'show']);
+        Route::get('/{nodeId}/recommendations', [NodeController::class, 'recommendations']);
+        Route::post('/{nodeId}/validate-properties', [NodeController::class, 'validateProperties']);
+    });
+
+    // Node categories
+    Route::get('/nodes/categories/{category}', [NodeController::class, 'category']);
+
+});
+
+// Webhook endpoints (public routes for external triggers - outside auth middleware)
+Route::prefix('webhooks')->group(function () {
+    Route::post('/{workflowId}', [WorkflowController::class, 'webhookTrigger']);
+    Route::get('/{workflowId}', [WorkflowController::class, 'webhookTrigger']);
+    Route::put('/{workflowId}', [WorkflowController::class, 'webhookTrigger']);
+});
+
+// Legacy user route (for backward compatibility)
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
 });
