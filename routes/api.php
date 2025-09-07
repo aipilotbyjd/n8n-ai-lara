@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\ApiDocumentationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\OrganizationController;
 use App\Http\Controllers\Api\TeamController;
@@ -60,8 +59,3 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 });
-
-// API Documentation and Monitoring Routes
-Route::get('/health', [ApiDocumentationController::class, 'health']);
-Route::get('/metrics', [ApiDocumentationController::class, 'metrics'])->middleware('auth:sanctum');
-Route::get('/queue/status', [ApiDocumentationController::class, 'queueStatus'])->middleware('auth:sanctum');
